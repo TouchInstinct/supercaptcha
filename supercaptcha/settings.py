@@ -29,6 +29,8 @@ BACKGROUND_COLOR = getattr(settings, 'CAPTCHA_BACKGROUND_COLOR', (255, 255, 255)
 FILTER_CHAIN = getattr(settings, 'CAPTCHA_FILTER_CHAIN', [])
 
 VERTICAL_JUMP = getattr(settings, 'CAPTCHA_VERTICAL_JUMP', True)
+INTERSECT = getattr(settings, 'CAPTCHA_INTERSECT', True)
+ROTATE = getattr(settings, 'CAPTCHA_ROTATE', True)
 
 SIZE = getattr(settings, 'CAPTCHA_SIZE', (200, 100))
 ALT = getattr(settings, 'CAPTCHA_ALT', 'no robots here')

@@ -35,6 +35,8 @@ BG_COLOR = settings.BACKGROUND_COLOR
 FG_COLORS = settings.FOREGROUND_COLORS
 ENC_TYPE, MIME_TYPE = settings.FORMAT
 JUMP = settings.VERTICAL_JUMP
+INTERSECT = settings.INTERSECT
+ROTATE = settings.ROTATE
 COLORIZE = settings.COLORIZE_SYMBOLS
 PREFIX = settings.CACHE_PREFIX
 CODE_ATTR_NAME = '_captcha_code'
@@ -67,17 +69,17 @@ def generate_text():
 
 @never_cache
 def draw(request, code):
-    
+
     font_name, fontfile = choice(settings.AVAIL_FONTS)
     cache_name = '%s-%s-size' % (PREFIX, font_name)
     text = generate_text()
     cache.set('%s-%s' % (PREFIX, code), text, 600)
-    
+
     def fits(font_size):
         font = ImageFont.truetype(fontfile, font_size)
         size = font.getsize(text)
         return size[0] < WIDTH and size[1] < HEIGHT
-    
+
     font_size = cache.get(cache_name , 10)
     if fits(font_size):
         while True:
@@ -91,13 +93,10 @@ def draw(request, code):
             if fits(font_size):
                 break
     cache.set(cache_name, font_size, 600)
-    
+
     font = ImageFont.truetype(fontfile, font_size)
     text_size = font.getsize(text)
-    icolor = 'RGB'
-    if len(BG_COLOR) == 4:
-        icolor = 'RGBA'
-    im = Image.new(icolor, (WIDTH, HEIGHT), BG_COLOR)
+    im = Image.new('RGBA', (WIDTH, HEIGHT), (0,) * 4)
     d = ImageDraw.Draw(im)
     if JUMP:
         if COLORIZE:
@@ -107,8 +106,8 @@ def draw(request, code):
             get_color = lambda: color
         position = [(WIDTH - text_size[0]) / 2, 0]
         shift_max = HEIGHT - text_size[1]
-        shift_min = shift_max / 4
-        shift_max = shift_max * 3 / 4
+        shift_min = shift_max / 6
+        shift_max = shift_max * 2
         for char in text:
             l_size = font.getsize(char)
             try:
@@ -116,29 +115,42 @@ def draw(request, code):
             except IndexError:
                 position[1] = shift_min
             d.text(position, char, font=font, fill=get_color())
-            position[0] += l_size[0]
+            if ROTATE:
+                im = im.rotate(random())
+                d = ImageDraw.Draw(im)
+
+
+            if INTERSECT:
+                position[0] += l_size[0] * 0.77
+            else:
+                position[0] += l_size[0]
     else:
         position = [(WIDTH - text_size[0]) / 2,
                     (HEIGHT - text_size[1]) / 2]
         d.text(position, text, font=font, fill=choice(FG_COLORS))
-    
+
     response = HttpResponse(mimetype=MIME_TYPE)
-    
+
     response['cache-control'] = 'no-store, no-cache, must-revalidate, proxy-revalidate'
-    
+
     for f in settings.FILTER_CHAIN:
         im = im.filter(getattr(ImageFilter, f))
-    
-    im.save(response, ENC_TYPE)
+
+    icolor = 'RGB'
+    if len(BG_COLOR) == 4:
+        icolor = 'RGBA'
+    result = Image.new(icolor, im.size, BG_COLOR)
+    result = Image.composite(im, result, im)
+    result.save(response, ENC_TYPE)
     return response
 
 class CaptchaImageWidget(forms.Widget):
-    
+
     if REFRESH:
         template = HTML_TEMPLATE_WITH_REFRESH
     else:
         template = HTML_TEMPLATE
-    
+
     def render(self, name, value, attrs=None):
         code = get_current_code()
         empty_current_code()
@@ -150,7 +162,7 @@ class CaptchaImageWidget(forms.Widget):
                                           'refresh_text': REFRESH_LINK_TEXT})
 
 class HiddenCodeWidget(forms.HiddenInput):
-	
+
     def render(self, name, value=None, attrs=None):
         if value is None:
             empty_current_code()
@@ -162,11 +174,11 @@ class HiddenCodeWidget(forms.HiddenInput):
 
 
 class CaptchaWidget(forms.MultiWidget):
-    
+
     def __init__(self, attrs={}, code=None):
         widgets = (HiddenCodeWidget(attrs=attrs), CaptchaImageWidget(attrs=attrs))
         super(CaptchaWidget, self).__init__(widgets, attrs)
-    
+
     def decompress(self, value):
         if value:
             return value.split()
@@ -180,7 +192,7 @@ class CaptchaWidget(forms.MultiWidget):
 
 
 class CaptchaField(forms.MultiValueField):
-    
+
     widget = CaptchaWidget
 
     default_error_messages = {
@@ -195,22 +207,22 @@ class CaptchaField(forms.MultiValueField):
             forms.CharField(max_length=settings.LENGTH, min_length=settings.LENGTH),
             )
         super(CaptchaField, self).__init__(fields, *args, **kwargs)
-        
+
     def compress(self, data_list):
         return ' '.join(data_list)
-    
+
     def clean(self, value):
         if len(value) != 2:
             raise forms.ValidationError, self.error_messages['wrong']
-        
+
         code, text = value
         cached_text = cache.get('%s-%s' % (PREFIX, code))
         cache.set('%s-%s' % (PREFIX, code), generate_text(), 600)
-        
+
         if not cached_text:
             raise forms.ValidationError, self.error_messages['internal']
         if not text:
             raise forms.ValidationError, self.error_messages['required']
         if text.lower() != cached_text.lower():
             raise forms.ValidationError, self.error_messages['wrong']
-        
+
