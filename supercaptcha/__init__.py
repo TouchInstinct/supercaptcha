@@ -107,7 +107,7 @@ def draw(request, code):
         position = [(WIDTH - text_size[0]) / 2, 0]
         shift_max = HEIGHT - text_size[1]
         shift_min = shift_max / 6
-        shift_max = shift_max * 2
+        shift_max = shift_max / 2
         for char in text:
             l_size = font.getsize(char)
             try:
